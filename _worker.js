@@ -1,22 +1,63 @@
-const TELEGRAPH_URL = 'https://api.openai.com';
+/**
+ * 静态仓库托管 for Cloudflare Workers
+ * @url https://github.com/opentdp/openai-chat
+ * @author Rehiy
+ */
 
-addEventListener('fetch', event => {
-  event.respondWith(handleRequest(event.request))
-})
+const BACKEND_PREFIX = 'https://raw.githubusercontent.com/opentdp/openai-chat/master';
 
-async function handleRequest(request) {
-  const url = new URL(request.url);
-  const headers_Origin = request.headers.get("Access-Control-Allow-Origin") || "*"
-  url.host = TELEGRAPH_URL.replace(/^https?:\/\//, '');
-  const modifiedRequest = new Request(url.toString(), {
-    headers: request.headers,
-    method: request.method,
-    body: request.body,
-    redirect: 'follow'
-  });
-  const response = await fetch(modifiedRequest);
-  const modifiedResponse = new Response(response.body, response);
-  // 添加允许跨域访问的响应头
-  modifiedResponse.headers.set('Access-Control-Allow-Origin', headers_Origin);
-  return modifiedResponse;
+async function github_proxy(request) {
+    const uObj = new URL(request.url);
+
+    let backend = BACKEND_PREFIX + uObj.pathname;
+    if (backend.endsWith('/')) {
+        backend += 'index.html';
+    }
+
+    const res = await fetch(backend, {
+        method: request.method,
+        headers: {
+            'User-Agent': request.headers.get('User-Agent'),
+        }
+    });
+
+    const headers = new Headers();
+    headers.set('Backend-Url', backend);
+    headers.set('Content-Type', file_type(backend));
+    headers.set('Cache-Control', 'public, max-age=86400');
+
+    return new Response(res.body, {
+        status: res.status,
+        headers,
+    });
+}
+
+function file_type(url) {
+    const ext = url.split('?').shift().split('.').pop();
+    const mines = {
+        'json': 'application/json; charset=utf-8',
+        'js': 'application/javascript; charset=utf-8',
+        'css': 'text/css; charset=utf-8',
+        'xml': 'text/xml; charset=utf-8',
+        'html': 'text/html; charset=utf-8',
+        'webm': 'video/webm',
+        'mp3': 'audio/mpeg',
+        'mp4': 'video/mp4',
+        'webp': 'image/webp',
+        'gif': 'image/gif',
+        'png': 'image/png',
+        'jpg': 'image/jpeg',
+        'jpeg': 'image/jpeg',
+        'svg': 'image/svg+xml',
+        'ico': 'image/x-icon',
+    };
+    return mines[ext] || 'text/plain';
+}
+
+// cf esmodule
+
+export default {
+    async fetch(request, env) {
+        return github_proxy(request);
+    }
 }
